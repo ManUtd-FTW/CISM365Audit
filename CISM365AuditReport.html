@@ -1,45 +1,29 @@
-<!-- From your uploaded snapshot (kept as-is for reference) -->
-# CIS M365 Audit Results
-### CIS Microsoft 365 Audit Results for visecurityinc.onmicrosoft.com
-<table>
-<tr>
-<th> 
-Control 
-</th>
- 
- <th>Description 
-</th>
- <th>Status 
-</th>
- </tr>
-<tr>
-<td> 
-1.1.3 
-</td>
- 
- <td>Ensure that between two and four global admins are designated 
-</td>
- <td>Welcome to Microsoft Graph! Connected via delegated access using 14d82eec-204b-4c2f-b7e8-296a70dab67e Readme: https://aka.ms/graph/sdk/powershell SDK Docs: https://aka.ms/graph/sdk/powershell/docs API Docs: https://aka.ms/graph/docs NOTE: You can use the -NoWelcome parameter to suppress this message. PASS (2 global admins) 
-</td>
- </tr>
-<tr>
-<td> 
-2.1.9 
-</td>
- 
- <td>Ensure that DKIM is enabled for all Exchange Online Domains 
-</td>
- <td>PASS (DKIM enabled for all domains) 
-</td>
- </tr>
-<tr>
-<td> 
-2.1.1 
-</td>
- 
- <td>Ensure Safe Links for Office Applications is Enabled 
-</td>
- <td>PASS (Safe Links enabled for Office, Email, Teams) 
-</td>
- </tr>
-</table>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>CIS M365 Audit Results</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; color:#222; margin:24px }
+    .meta { color:#666; margin-bottom:12px }
+    .summary { margin: 6px 0 16px 0 }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; margin-right:6px; font-size:12px; color:#fff }
+    .p-pass { background:#2e7d32 }
+    .p-fail { background:#c62828 }
+    .p-man  { background:#ef6c00 }
+    .p-err  { background:#6d4c41 }
+    table { border-collapse:collapse; width:100% }
+    th, td { border:1px solid #ddd; padding:6px 8px; vertical-align:top }
+    th { background:#f7f7f7; text-align:left }
+  </style>
+</head>
+<body>
+  <h2 style="margin:0 0 8px 0">CIS Microsoft 365 Audit Results for visecurityinc.onmicrosoft.com</h2>
+  <div class="meta">Generated: 2025-09-02 16:09 -04:00</div>
+  <div class="summary">
+    <span class="pill p-pass">PASS: 1</span>
+    <span class="pill p-fail">FAIL: 2</span>
+    <span class="pill p-man">MANUAL: 0</span>
+    <span class="pill p-err">ERROR: 0</span>
+  </div>
+  <table>
+    <tr><th>Control</th><th>Description</th><th>Status</th></tr><tr><td>1.1.3</td><td>Ensure that between two and four global admins are designated</td><td style='color:#2e7d32'>PASS (2 global admins)</td></tr><tr><td>2.1.9</td><td>Ensure that DKIM is enabled for all Exchange Online Domains</td><td style='color:#c62828'>FAIL (DKIM not enabled for: vi-365.com)</td></tr><tr><td>2.1.1</td><td>Ensure Safe Links for Office Applications is Enabled</td><td style='color:#c62828'>FAIL (EnableSafeLinksForOffice=, EnableSafeLinksForClients=)</td></tr></table></body></html>

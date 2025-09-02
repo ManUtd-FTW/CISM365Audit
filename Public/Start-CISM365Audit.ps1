@@ -7,34 +7,83 @@ function Start-CISM365Audit {
         [string]$OutputPath = ".\CISM365AuditReport.html"
     )
 
-    # --- Minimal CIS Controls Registry (expand as needed) ---
+    # Ensure output directory exists
+    try {
+        $dir = Split-Path -Path (Resolve-Path -Path $OutputPath -ErrorAction SilentlyContinue ?? $OutputPath) -Parent
+        if (-not $dir) { $dir = Split-Path -Parent $OutputPath }
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    } catch { }
+
+    # Helper: HTML-encode values
+    $EncodeHtml = {
+        param($s)
+        if ($null -eq $s) { return '' }
+        $s.ToString().
+          Replace('&','&amp;').
+          Replace('<','&lt;').
+          Replace('>','&gt;').
+          Replace('"','&quot;').
+          Replace("'","&#39;")
+    }
+
+    # --- Minimal CIS Controls Registry ---
     $CISControls = @(
         @{
             Id   = '1.1.3'
             Name = 'Ensure that between two and four global admins are designated'
             Audit = {
-                # Connect to Graph if not already connected
-                if (-not (Get-MgContext)) {
+                # Connect to Graph if not already connected with required scope
+                $ctx = $null
+                try { $ctx = Get-MgContext -ErrorAction Stop } catch { }
+                $needGraph = -not $ctx -or -not $ctx.Scopes -or ('Directory.Read.All' -notin $ctx.Scopes)
+                if ($needGraph) {
                     Connect-MgGraph -Scopes "Directory.Read.All" -TenantId $Tenant -NoWelcome
                 }
 
-                # RoleTemplateId for Global Administrator (Company Administrator)
-                $role    = Get-MgDirectoryRole -Filter "RoleTemplateId eq '62e90394-69f5-4237-9190-012177145e10'"
-                $members = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id
+                # GA Role Template Id (Company Administrator)
+                $gaTemplateId = '62e90394-69f5-4237-9190-012177145e10'
 
-                $count = 0
-                foreach ($m in $members) {
-                    if ($m.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.user') {
-                        $count++
-                    }
-                    elseif ($m.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.group') {
-                        $groupMembers = (Get-MgGroupMember -GroupId $m.Id).AdditionalProperties
-                        foreach ($gm in $groupMembers) {
-                            if ($gm.'@odata.type' -eq '#microsoft.graph.user') { $count++ }
-                        }
-                    }
+                # DirectoryRole only returns activated roles
+                $roles = Get-MgDirectoryRole -All -ErrorAction Stop
+                $role  = $roles | Where-Object { $_.RoleTemplateId -eq $gaTemplateId -or $_.DisplayName -eq 'Company Administrator' }
+
+                if (-not $role) {
+                    return "MANUAL (Global Administrator role not activated in this tenant)"
                 }
 
+                # Get direct role members
+                $members = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id -All -ErrorAction Stop
+
+                # Count unique users, including users in any assigned groups (transitive)
+                $userIds = [System.Collections.Generic.HashSet[string]]::new()
+
+                foreach ($m in $members) {
+                    $type = $m.AdditionalProperties.'@odata.type'
+                    if ($type -eq '#microsoft.graph.user') {
+                        [void]$userIds.Add($m.Id)
+                    }
+                    elseif ($type -eq '#microsoft.graph.group') {
+                        try {
+                            $tm = Get-MgGroupTransitiveMember -GroupId $m.Id -All -ErrorAction Stop
+                            foreach ($x in $tm) {
+                                if ($x.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.user') {
+                                    [void]$userIds.Add($x.Id)
+                                }
+                            }
+                        } catch {
+                            # Fallback to direct members if transitive fails
+                            $gm = Get-MgGroupMember -GroupId $m.Id -All -ErrorAction SilentlyContinue
+                            foreach ($x in $gm) {
+                                if ($x.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.user') {
+                                    [void]$userIds.Add($x.Id)
+                                }
+                            }
+                        }
+                    }
+                    # Ignore other principals for this count
+                }
+
+                $count = $userIds.Count
                 if ($count -ge 2 -and $count -le 4) { "PASS ($count global admins)" }
                 else { "FAIL ($count global admins)" }
             }
@@ -44,35 +93,65 @@ function Start-CISM365Audit {
             Name = 'Ensure that DKIM is enabled for all Exchange Online Domains'
             Audit = {
                 # Connect to Exchange Online if not already connected
-                if (-not (Get-PSSession | Where-Object { $_.ComputerName -like '*outlook.office365.com*' })) {
-                    Connect-ExchangeOnline -Organization $Tenant
+                $exoConnected = $false
+                try {
+                    $ci = Get-ConnectionInformation -ErrorAction SilentlyContinue
+                    if ($ci -and $ci.State -eq 'Connected') { $exoConnected = $true }
+                } catch { }
+                if (-not $exoConnected) {
+                    Connect-ExchangeOnline -Organization $Tenant -ShowBanner:$false
                 }
 
-                $dkim = Get-DkimSigningConfig
-                $fail = $dkim | Where-Object { -not $_.Enabled }
+                # Only evaluate custom authoritative domains
+                $domains = Get-AcceptedDomain -ErrorAction Stop |
+                    Where-Object { $_.DomainType -eq 'Authoritative' -and $_.DomainName -notlike '*.onmicrosoft.com' }
 
-                if ($fail.Count -eq 0) { "PASS (DKIM enabled for all domains)" }
-                else { "FAIL (DKIM not enabled for: $($fail.DomainName -join ', '))" }
+                if (-not $domains) { return "MANUAL (No custom authoritative domains found)" }
+
+                $dkimStatus = foreach ($d in $domains) {
+                    try {
+                        $cfg = Get-DkimSigningConfig -Identity $d.DomainName -ErrorAction Stop
+                        [pscustomobject]@{ Domain=$d.DomainName; Enabled=$cfg.Enabled }
+                    } catch {
+                        # Treat missing config as not enabled
+                        [pscustomobject]@{ Domain=$d.DomainName; Enabled=$false }
+                    }
+                }
+
+                $notEnabled = $dkimStatus | Where-Object { -not $_.Enabled }
+                if ($notEnabled) {
+                    "FAIL (DKIM not enabled for: $($notEnabled.Domain -join ', '))"
+                } else {
+                    "PASS (DKIM enabled for all custom domains)"
+                }
             }
         },
         @{
             Id   = '2.1.1'
             Name = 'Ensure Safe Links for Office Applications is Enabled'
             Audit = {
-                if (-not (Get-PSSession | Where-Object { $_.ComputerName -like '*outlook.office365.com*' })) {
-                    Connect-ExchangeOnline -Organization $Tenant
+                # Connect to Exchange Online if not already connected
+                $exoConnected = $false
+                try {
+                    $ci = Get-ConnectionInformation -ErrorAction SilentlyContinue
+                    if ($ci -and $ci.State -eq 'Connected') { $exoConnected = $true }
+                } catch { }
+                if (-not $exoConnected) {
+                    Connect-ExchangeOnline -Organization $Tenant -ShowBanner:$false
                 }
 
-                $policies = Get-SafeLinksPolicy
-                $pass = $false
-                foreach ($p in $policies) {
-                    if ($p.EnableSafeLinksForOffice -and $p.EnableSafeLinksForEmail -and $p.EnableSafeLinksForTeams) {
-                        $pass = $true
+                try {
+                    $p = Get-AtpPolicyForO365 -ErrorAction Stop
+                    $office  = $p.EnableSafeLinksForOffice
+                    $clients = $p.EnableSafeLinksForClients
+                    if ($office -and $clients) {
+                        "PASS (Safe Links enabled for Office and clients)"
+                    } else {
+                        "FAIL (EnableSafeLinksForOffice=$office, EnableSafeLinksForClients=$clients)"
                     }
+                } catch {
+                    "MANUAL (Unable to read AtpPolicyForO365: $($_.Exception.Message))"
                 }
-
-                if ($pass) { "PASS (Safe Links enabled for Office, Email, Teams)" }
-                else { "FAIL (Safe Links not fully enabled)" }
             }
         }
     )
@@ -83,8 +162,7 @@ function Start-CISM365Audit {
         Write-Host "Checking $($ctrl.Id): $($ctrl.Name) ..."
         try {
             $status = & $ctrl.Audit
-        }
-        catch {
+        } catch {
             $status = "ERROR: $($_.Exception.Message)"
         }
 
@@ -95,21 +173,59 @@ function Start-CISM365Audit {
         }
     }
 
-    # --- Output Minimal HTML ---
+    # --- Build Minimal HTML with summary + encoding ---
+    $pass   = ($results | Where-Object { $_.Status -like 'PASS*'  }).Count
+    $fail   = ($results | Where-Object { $_.Status -like 'FAIL*'  }).Count
+    $manual = ($results | Where-Object { $_.Status -like 'MANUAL*'}).Count
+    $error  = ($results | Where-Object { $_.Status -like 'ERROR*' }).Count
+
+    $gts = Get-Date -Format "yyyy-MM-dd HH:mm K"
+
     $html = @"
 <html>
-<head><title>CIS M365 Audit Results</title></head>
+<head>
+  <meta charset="utf-8" />
+  <title>CIS M365 Audit Results</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; color:#222; margin:24px }
+    .meta { color:#666; margin-bottom:12px }
+    .summary { margin: 6px 0 16px 0 }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; margin-right:6px; font-size:12px; color:#fff }
+    .p-pass { background:#2e7d32 }
+    .p-fail { background:#c62828 }
+    .p-man  { background:#ef6c00 }
+    .p-err  { background:#6d4c41 }
+    table { border-collapse:collapse; width:100% }
+    th, td { border:1px solid #ddd; padding:6px 8px; vertical-align:top }
+    th { background:#f7f7f7; text-align:left }
+  </style>
+</head>
 <body>
-<h2>CIS Microsoft 365 Audit Results for $Tenant</h2>
-<table border='1' cellpadding='5' cellspacing='0'>
-<tr><th>Control</th><th>Description</th><th>Status</th></tr>
+  <h2 style="margin:0 0 8px 0">CIS Microsoft 365 Audit Results for $Tenant</h2>
+  <div class="meta">Generated: $gts</div>
+  <div class="summary">
+    <span class="pill p-pass">PASS: $pass</span>
+    <span class="pill p-fail">FAIL: $fail</span>
+    <span class="pill p-man">MANUAL: $manual</span>
+    <span class="pill p-err">ERROR: $error</span>
+  </div>
+  <table>
+    <tr><th>Control</th><th>Description</th><th>Status</th></tr>
 "@
+
     foreach ($r in $results) {
-        $color = if ($r.Status -like "PASS*") { "green" } elseif ($r.Status -like "FAIL*") { "red" } else { "orange" }
-        $html += "<tr><td>$($r.Id)</td><td>$($r.Name)</td><td style='color:$color'>$($r.Status)</td></tr>"
+        $color = if ($r.Status -like "PASS*") { "#2e7d32" } elseif ($r.Status -like "FAIL*") { "#c62828" } elseif ($r.Status -like "ERROR*") { "#6d4c41" } else { "#ef6c00" }
+        $id    = & $EncodeHtml $r.Id
+        $name  = & $EncodeHtml $r.Name
+        $stat  = & $EncodeHtml $r.Status
+        $html += "<tr><td>$id</td><td>$name</td><td style='color:$color'>$stat</td></tr>"
     }
+
     $html += "</table></body></html>"
 
     $html | Out-File -FilePath $OutputPath -Encoding UTF8
     Write-Host "Audit complete. Results saved to $OutputPath" -ForegroundColor Green
+
+    # Also return the raw results for programmatic use
+    $results
 }
