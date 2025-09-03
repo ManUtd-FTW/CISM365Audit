@@ -2,28 +2,69 @@ function Start-CISM365Audit {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
         [string]$Tenant,
 
-        [string]$OutputPath = ".\CISM365AuditReport.html"
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string]$OutputPath = ".\CISM365AuditReport.html",
+
+        [switch]$NoConnect
     )
 
-    # Ensure output directory exists
-    try {
-        $dir = Split-Path -Path (Resolve-Path -Path $OutputPath -ErrorAction SilentlyContinue ?? $OutputPath) -Parent
-        if (-not $dir) { $dir = Split-Path -Parent $OutputPath }
-        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    } catch { }
+    # Optional wrapper—only call if the function exists and -NoConnect wasn't provided
+    if (-not $NoConnect) {
+        if (Get-Command -Name Connect-CISM365Services -ErrorAction SilentlyContinue) {
+            Connect-CISM365Services -Graph -ExchangeOnline -TenantId $Tenant -Organization $Tenant -GraphScopes 'Directory.Read.All' -ErrorAction Stop | Out-Null
+        } else {
+            # Minimal inline connect if wrapper isn't available
+            try {
+                $ctx = $null
+                try { $ctx = Get-MgContext -ErrorAction Stop } catch {}
+                if (-not $ctx -or -not $ctx.Scopes -or ('Directory.Read.All' -notin $ctx.Scopes)) {
+                    Connect-MgGraph -Scopes "Directory.Read.All" -TenantId $Tenant -NoWelcome
+                }
+            } catch {
+                throw "Unable to connect to Microsoft Graph: $($_.Exception.Message)"
+            }
 
-    # Helper: HTML-encode values
+            try {
+                $exoConnected = $false
+                try {
+                    $ci = Get-ConnectionInformation -ErrorAction SilentlyContinue
+                    if ($ci -and $ci.State -eq 'Connected') { $exoConnected = $true }
+                } catch {}
+                if (-not $exoConnected) {
+                    Connect-ExchangeOnline -Organization $Tenant -ShowBanner:$false -ErrorAction Stop
+                }
+            } catch {
+                throw "Unable to connect to Exchange Online: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # Ensure output directory exists (PS 5.1+ compatible)
+    try {
+        $resolved = $null
+        try { $resolved = (Resolve-Path -Path $OutputPath -ErrorAction Stop).Path } catch {}
+        $targetPath = if ($resolved) { $resolved } else { $OutputPath }
+
+        $dir = Split-Path -Path $targetPath -Parent
+        if ([string]::IsNullOrWhiteSpace($dir)) {
+            $dir = Split-Path -Path (Join-Path -Path (Get-Location) -ChildPath $OutputPath) -Parent
+        }
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+    } catch {
+        Write-Verbose "Could not ensure output directory: $($_.Exception.Message)"
+    }
+
+    # Helper: HTML-encode values (System.Net.WebUtility works in PS 5.1 and 7+)
     $EncodeHtml = {
         param($s)
         if ($null -eq $s) { return '' }
-        $s.ToString().
-          Replace('&','&amp;').
-          Replace('<','&lt;').
-          Replace('>','&gt;').
-          Replace('"','&quot;').
-          Replace("'","&#39;")
+        [System.Net.WebUtility]::HtmlEncode($s.ToString())
     }
 
     # --- Minimal CIS Controls Registry ---
@@ -34,7 +75,7 @@ function Start-CISM365Audit {
             Audit = {
                 # Connect to Graph if not already connected with required scope
                 $ctx = $null
-                try { $ctx = Get-MgContext -ErrorAction Stop } catch { }
+                try { $ctx = Get-MgContext -ErrorAction Stop } catch {}
                 $needGraph = -not $ctx -or -not $ctx.Scopes -or ('Directory.Read.All' -notin $ctx.Scopes)
                 if ($needGraph) {
                     Connect-MgGraph -Scopes "Directory.Read.All" -TenantId $Tenant -NoWelcome
@@ -54,7 +95,7 @@ function Start-CISM365Audit {
                 # Get direct role members
                 $members = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id -All -ErrorAction Stop
 
-                # Count unique users, including users in any assigned groups (transitive)
+                # Count unique users, incl. users in assigned groups (transitive)
                 $userIds = [System.Collections.Generic.HashSet[string]]::new()
 
                 foreach ($m in $members) {
@@ -97,7 +138,7 @@ function Start-CISM365Audit {
                 try {
                     $ci = Get-ConnectionInformation -ErrorAction SilentlyContinue
                     if ($ci -and $ci.State -eq 'Connected') { $exoConnected = $true }
-                } catch { }
+                } catch {}
                 if (-not $exoConnected) {
                     Connect-ExchangeOnline -Organization $Tenant -ShowBanner:$false
                 }
@@ -135,7 +176,7 @@ function Start-CISM365Audit {
                 try {
                     $ci = Get-ConnectionInformation -ErrorAction SilentlyContinue
                     if ($ci -and $ci.State -eq 'Connected') { $exoConnected = $true }
-                } catch { }
+                } catch {}
                 if (-not $exoConnected) {
                     Connect-ExchangeOnline -Organization $Tenant -ShowBanner:$false
                 }
@@ -173,19 +214,21 @@ function Start-CISM365Audit {
         }
     }
 
-    # --- Build Minimal HTML with summary + encoding ---
-    $pass   = ($results | Where-Object { $_.Status -like 'PASS*'  }).Count
-    $fail   = ($results | Where-Object { $_.Status -like 'FAIL*'  }).Count
-    $manual = ($results | Where-Object { $_.Status -like 'MANUAL*'}).Count
-    $error  = ($results | Where-Object { $_.Status -like 'ERROR*' }).Count
+    # --- Build Minimal HTML Report ---
+    $pass   = ($results | Where-Object { $_.Status -like 'PASS*'   }).Count
+    $fail   = ($results | Where-Object { $_.Status -like 'FAIL*'   }).Count
+    $manual = ($results | Where-Object { $_.Status -like 'MANUAL*' }).Count
+    $error  = ($results | Where-Object { $_.Status -like 'ERROR*'  }).Count
 
     $gts = Get-Date -Format "yyyy-MM-dd HH:mm K"
 
     $html = @"
-<html>
+<!doctype html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>CIS M365 Audit Results</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: Segoe UI, Arial, sans-serif; color:#222; margin:24px }
     .meta { color:#666; margin-bottom:12px }
