@@ -1,31 +1,93 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>CIS M365 Audit Results</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: Segoe UI, Arial, sans-serif; color:#222; margin:24px }
-    .meta { color:#666; margin-bottom:12px }
-    .summary { margin: 6px 0 16px 0 }
-    .pill { display:inline-block; padding:2px 8px; border-radius:999px; margin-right:6px; font-size:12px; color:#fff }
-    .p-pass { background:#2e7d32 }
-    .p-fail { background:#c62828 }
-    .p-man  { background:#ef6c00 }
-    .p-err  { background:#6d4c41 }
-    table { border-collapse:collapse; width:100% }
-    th, td { border:1px solid #ddd; padding:6px 8px; vertical-align:top }
-    th { background:#f7f7f7; text-align:left }
-  </style>
-</head>
-<body>
-  <h2 style="margin:0 0 8px 0">CIS Microsoft 365 Audit Results for visecurityinc.onmicrosoft.com</h2>
-  <div class="meta">Generated: 2025-09-03 14:26 -04:00</div>
-  <div class="summary">
-    <span class="pill p-pass">PASS: 1</span>
-    <span class="pill p-fail">FAIL: 2</span>
-    <span class="pill p-man">MANUAL: 0</span>
-    <span class="pill p-err">ERROR: 0</span>
-  </div>
-  <table>
-    <tr><th>Control</th><th>Description</th><th>Status</th></tr><tr><td>1.1.3</td><td>Ensure that between two and four global admins are designated</td><td style='color:#2e7d32'>PASS (2 global admins)</td></tr><tr><td>2.1.9</td><td>Ensure that DKIM is enabled for all Exchange Online Domains</td><td style='color:#c62828'>FAIL (DKIM not enabled for: vi-365.com)</td></tr><tr><td>2.1.1</td><td>Ensure Safe Links for Office Applications is Enabled</td><td style='color:#c62828'>FAIL (EnableSafeLinksForOffice=, EnableSafeLinksForClients=)</td></tr></table></body></html>
+<html><head><meta charset='utf-8'><title>CIS M365 Audit</title>
+<style>
+body{font-family:Segoe UI,Arial;margin:24px;color:#222}
+.summary .pill{display:inline-block;padding:2px 8px;border-radius:999px;margin-right:6px;font-size:12px;color:#fff}
+.p-pass{background:#2e7d32}.p-fail{background:#c62828}.p-man{background:#ef6c00}.p-err{background:#6d4c41}
+.details{margin:8px 0;padding:8px;background:#f9f9f9;border:1px solid #ddd}
+.collapsible{cursor:pointer;color:#0366d6;text-decoration:underline}
+</style>
+<script>
+function toggle(id){var e=document.getElementById(id);e.style.display=(e.style.display==='none')?'block':'none';}
+</script>
+</head><body>
+<h2>CIS Microsoft 365 Audit Results for contoso.onmicrosoft.com</h2>
+<div>Generated: 2025-09-04 09:47 -04:00</div>
+<div class='summary'>
+<span class='pill p-pass'>PASS: 2</span>
+<span class='pill p-fail'>FAIL: 3</span>
+<span class='pill p-man'>MANUAL: 3</span>
+<span class='pill p-err'>ERROR: 0</span>
+</div><div>
+<h3>1.1.3: Ensure 2–4 Global Admins are designated</h3>
+<p><strong>Status:</strong> <span style='color:#2e7d32'>PASS (2 global admins)</span></p>
+<p class='collapsible' onclick=\"toggle('d1')\">Show Details</p>
+<div id='d1' class='details' style='display:none'>
+<p><strong>Description:</strong> Limit the number of Global Administrators to reduce risk.</p>
+<p><strong>Rationale:</strong> Too many global admins increase attack surface.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/azure/active-directory/roles/best-practices" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/azure/active-directory/roles/best-practices</a></p>
+</div>
+</div><div>
+<h3>2.1.9: Ensure DKIM is enabled for all custom domains</h3>
+<p><strong>Status:</strong> <span style='color:#c62828'>FAIL (DKIM not enabled for: vi-365.com)</span></p>
+<p class='collapsible' onclick=\"toggle('d2')\">Show Details</p>
+<div id='d2' class='details' style='display:none'>
+<p><strong>Description:</strong> DomainKeys Identified Mail (DKIM) helps prevent spoofing.</p>
+<p><strong>Rationale:</strong> DKIM adds cryptographic authentication to email headers.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/use-dkim-to-validate-outbound-email" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/use-dkim-to-validate-outbound-email</a></p>
+</div>
+</div><div>
+<h3>2.1.1: Ensure Safe Links for Office Apps is enabled</h3>
+<p><strong>Status:</strong> <span style='color:#c62828'>FAIL (Safe Links not fully enabled)</span></p>
+<p class='collapsible' onclick=\"toggle('d3')\">Show Details</p>
+<div id='d3' class='details' style='display:none'>
+<p><strong>Description:</strong> Safe Links protects users from malicious URLs in Office apps.</p>
+<p><strong>Rationale:</strong> Helps prevent phishing and malware attacks.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/safe-links</a></p>
+</div>
+</div><div>
+<h3>1.2.1: Ensure Security Defaults is enabled</h3>
+<p><strong>Status:</strong> <span style='color:#c62828'>FAIL (Disabled)</span></p>
+<p class='collapsible' onclick=\"toggle('d4')\">Show Details</p>
+<div id='d4' class='details' style='display:none'>
+<p><strong>Description:</strong> Security Defaults enforce MFA and other protections.</p>
+<p><strong>Rationale:</strong> Helps protect against common identity attacks.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/concept-fundamentals-security-defaults" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/concept-fundamentals-security-defaults</a></p>
+</div>
+</div><div>
+<h3>1.3.1: Ensure MFA is enabled for all users</h3>
+<p><strong>Status:</strong> <span style='color:#ef6c00'>MANUAL (Unable to check MFA via Graph reports)</span></p>
+<p class='collapsible' onclick=\"toggle('d5')\">Show Details</p>
+<div id='d5' class='details' style='display:none'>
+<p><strong>Description:</strong> Multi-Factor Authentication adds an extra layer of security.</p>
+<p><strong>Rationale:</strong> Reduces risk of credential compromise.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/graph/api/resources/authenticationmethods-usage-insights-overview" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/graph/api/resources/authenticationmethods-usage-insights-overview</a></p>
+</div>
+</div><div>
+<h3>2.1.10: Ensure DMARC is configured</h3>
+<p><strong>Status:</strong> <span style='color:#ef6c00'>MANUAL (Unable to check DMARC)</span></p>
+<p class='collapsible' onclick=\"toggle('d6')\">Show Details</p>
+<div id='d6' class='details' style='display:none'>
+<p><strong>Description:</strong> DMARC helps prevent email spoofing and phishing.</p>
+<p><strong>Rationale:</strong> Provides domain-level email authentication policy.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/use-dmarc-to-validate-email" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/use-dmarc-to-validate-email</a></p>
+</div>
+</div><div>
+<h3>8.1.1: Ensure mailbox auditing is enabled</h3>
+<p><strong>Status:</strong> <span style='color:#2e7d32'>PASS (Mailbox auditing enabled)</span></p>
+<p class='collapsible' onclick=\"toggle('d7')\">Show Details</p>
+<div id='d7' class='details' style='display:none'>
+<p><strong>Description:</strong> Mailbox auditing logs actions for security investigations.</p>
+<p><strong>Rationale:</strong> Helps detect unauthorized mailbox access.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/microsoft-365/compliance/enable-mailbox-auditing" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/microsoft-365/compliance/enable-mailbox-auditing</a></p>
+</div>
+</div><div>
+<h3>8.5.1: Ensure external sharing is restricted</h3>
+<p><strong>Status:</strong> <span style='color:#ef6c00'>MANUAL (Unable to check external sharing)</span></p>
+<p class='collapsible' onclick=\"toggle('d8')\">Show Details</p>
+<div id='d8' class='details' style='display:none'>
+<p><strong>Description:</strong> Restrict external sharing to reduce data leakage risk.</p>
+<p><strong>Rationale:</strong> Prevents unauthorized access to sensitive content.</p>
+<p><strong>References:</strong> <a href="https://learn.microsoft.com/en-us/sharepoint/external-sharing-overview" target="_blank" rel="noopener noreferrer">https://learn.microsoft.com/en-us/sharepoint/external-sharing-overview</a></p>
+</div>
+</div></body></html>

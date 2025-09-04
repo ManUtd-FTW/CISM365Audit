@@ -13,13 +13,24 @@ Disconnect-CISM365Services -Services All
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter()]
-    [ValidateSet('Graph','ExchangeOnline','Teams','SharePointOnline','Purview','All')]
+    # Accept synonyms passed from Connect-CISM365Services
+    [ValidateSet('Graph','ExchangeOnline','Teams','SharePoint','SharePointOnline','Compliance','Purview','All')]
     [string[]]$Services = @('Graph','ExchangeOnline','Teams','SharePointOnline','Purview')
 )
 
+# Expand 'All' to canonical internal names
 if ($Services -contains 'All') {
     $Services = @('Graph','ExchangeOnline','Teams','SharePointOnline','Purview')
 }
+
+# Normalize synonyms to canonical internal names used by this function
+$serviceMap = @{
+    'SharePoint' = 'SharePointOnline'
+    'Compliance' = 'Purview'
+}
+$Services = $Services | ForEach-Object {
+    if ($serviceMap.ContainsKey($_)) { $serviceMap[$_] } else { $_ }
+} | Select-Object -Unique
 
 $result = [ordered]@{
     Graph            = 'Skipped'
