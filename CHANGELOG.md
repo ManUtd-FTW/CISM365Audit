@@ -1,15 +1,24 @@
-
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-## [0.0.1] - 2025-09-02
+## [0.0.4] - 2025-09-04
 ### Added
-- Initial module structure with `CISM365Audit.psd1`, `CISM365Audit.psm1`, and organized `Public` and `Private` folders.
-- `Start-CISM365Audit` function to run CIS Microsoft 365 audit.
-- `Connect-CISM365Services` function to handle Microsoft Graph and Exchange Online authentication.
-- Implemented three CIS controls from v3.0.0:
-  - 1.1.3: Global Admins count via Microsoft Graph.
-  - 2.1.9: DKIM enabled for all custom domains.
-  - 2.1.1: Safe Links enabled for Office applications.
-- Minimal HTML report generation with PASS/FAIL/MANUAL/ERROR status.
+- MFA control now uses **Microsoft Graph Authentication Methods Usage Insights** for more accurate MFA registration checks.
+- Cross-platform DMARC check: falls back to `nslookup` or `dig` when `Resolve-DnsName` is unavailable.
+- HTML report improvements:
+  - Proper link rendering with safe encoding.
+  - Added `rel="noopener noreferrer"` for security.
+
+### Changed
+- `Disconnect-CISM365Services` now accepts `SharePoint` and `Compliance` synonyms and normalizes them to `SharePointOnline` and `Purview` for compatibility with `Connect-CISM365Services -ForceReauth`.
+- Improved HTML encoding for descriptions and rationales in reports.
+- Minor UX tweaks for verbose output and error handling.
+
+### Fixed
+- Resolved quoting issue in HTML link generation that caused runtime errors.
+- Ensured `ForceReauth` works consistently across Connect/Disconnect functions.
+
+### Known Limitations
+- MFA enforcement still requires manual review; current check validates registration only.
+- DMARC check requires DNS resolution; returns `MANUAL` if DNS tools are unavailable.
+
+---
