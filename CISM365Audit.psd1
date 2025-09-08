@@ -1,6 +1,6 @@
 @{
     RootModule      = 'CISM365Audit.psm1'
-    ModuleVersion   = '0.0.5'
+    ModuleVersion   = '0.0.6'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop','Core')
