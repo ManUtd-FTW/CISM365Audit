@@ -1,2 +1,37 @@
+# Ignore PowerShell-specific temporary files
 *.bak
-CISM365AuditReport.html
+
+# Ignore generated reports
+*.html
+*.csv
+*.json
+Reports/
+Output/
+Tests/
+
+# Ignore logs
+*.log
+
+# Ignore IDE/editor settings
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore Git artifacts
+*.orig
+
+# Ignore build artifacts (if any)
+bin/
+obj/
+
+# Ignore secrets (if any config files exist)
+*.secret
+*.config
+

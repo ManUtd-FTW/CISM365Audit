@@ -11,9 +11,9 @@
     Author          = 'Omar Jimenez'
     CompanyName     = 'Virtual Innovation'
     Copyright       = '(c) Omar Jimenez. All rights reserved.'
-    Description     = 'Minimal CIS Microsoft 365 Audit Module'
+    Description     = 'CIS Microsoft 365 Audit Module'
 
-    # Choose one: If you want PS7+ only, use '7.2'; if you need WinPS 5.1, set that instead.
+    # Choose one: Use PS7+ only, please.
     PowerShellVersion = '7.2'
 
     # Keep RequiredModules empty until we finalize service dependencies per control

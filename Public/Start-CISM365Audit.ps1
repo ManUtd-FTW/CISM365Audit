@@ -45,15 +45,16 @@ function Start-CISM365Audit {
     if (-not $NoConnect) {
         $servicesNeeded = ($catalog.Services | Where-Object { $_ } | Select-Object -Unique)
         if ($servicesNeeded) {
+            # Build connection parameters compatible with Connect-CISM365Services (don't pass unsupported 'Cloud')
             $connParams = @{
                 Services       = $servicesNeeded
                 TenantId       = $tenantId
                 TenantDomain   = $tenantDomain
-                Cloud          = $Cloud
                 ErrorOnFailure = $true
-                Verbose        = ($VerbosePreference -eq 'Continue')
             }
             if ($DeviceCode) { $connParams['DeviceCode'] = $true }
+
+            # Call connect (Connect-CISM365Services will respect -Verbose via common parameter)
             $null = Connect-CISM365Services @connParams
         }
     }
@@ -114,5 +115,5 @@ function Start-CISM365Audit {
         Write-Verbose "HTML report written to: $OutputPath"
     }
 
-    return ,$results
+    return $results
 }

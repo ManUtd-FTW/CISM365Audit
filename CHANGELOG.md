@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.5] - 2025-09-08
+### Added
+- `Start-CISM365Audit` orchestration to run initial controls.
+- New controls under `Private/Controls/`:
+  - 1.1.3, 1.2.1, 1.3.1 (initial batch)
+- `Connect-CISM365Services` and `Disconnect-CISM365Services` with prompt for SharePoint tenant short name.
+
+### Changed
+- Restructured module layout: `Public/` and `Private/` (with `Controls/`).
+- Updated `.psd1/.psm1` to align with PS7+ only.
+
+### Fixed
+- Early packaging/versioning cleanup.
+
 ## [0.0.4] - 2025-09-04
 ### Added
 - MFA control now uses **Microsoft Graph Authentication Methods Usage Insights** for more accurate MFA registration checks.
