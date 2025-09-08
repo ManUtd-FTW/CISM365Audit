@@ -1,37 +1,48 @@
 
+CISM365Audit — Minimal Microsoft 365 benchmark auditor (v0.0.6)
+
 # CISM365Audit
 
 Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of the **CIS Microsoft 365 Foundations Benchmark (v5.0.0.3)** and produce a simple HTML report.
 
-> **Status:** v0.0.1 (baseline)
+> **Status:** v0.0.6
+
+---
+
+## ✨ Summary of v0.0.6
+This release centralizes connection handling and makes the runner more robust:
+
+- Start-CISM365Audit now aggregates required services from discovered controls and calls a single connection helper (Connect-CISM365Services) before running checks.
+- Connect-CISM365Services accepts a flexible set of service identifiers (e.g., 'Graph', 'AdminCenter') and common splatted parameters (Tenant, TenantId, TenantDomain, Credential, ErrorOnFailure), prevents parameter-binding errors, and attempts safe interactive sign-in only when appropriate.
+- Controls have been made session-preserving: they detect an existing session and return a `MANUAL` result with remediation when no session exists, rather than trying to sign in themselves.
 
 ---
 
 ## ✨ Features
-- Lightweight PowerShell module structure (`.psd1`, `.psm1`, `Public/`, `Private/`).
+- Minimal PowerShell module structure (`.psd1`, `.psm1`, `Public/`, `Private/`).
 - Single entrypoint: `Start-CISM365Audit`.
-- Self-contained connection checks (Microsoft Graph + Exchange Online).
+- Centralized connection helper: `Connect-CISM365Services` (auto-connects Graph/ExchangeOnline when possible).
 - Minimal HTML report with PASS / FAIL / MANUAL / ERROR states.
 
-## ✅ Controls Implemented (v0.0.1)
-- **1.1.3** – Ensure that between two and four Global Admins are designated (via Microsoft Graph; counts users including group membership).
-- **2.1.9** – Ensure that DKIM is enabled for all Exchange Online domains (custom authoritative domains only).
-- **2.1.1** – Ensure Safe Links for Office applications is enabled (reads `Get-AtpPolicyForO365`).
+---
+
+## ✅ Controls Implemented (baseline examples)
+- 1.1.3 – Ensure the number of Global Admins is appropriate.
+- 2.1.9 – DKIM enabled for Exchange Online domains.
+- 2.1.1 – Safe Links for Office applications.
+
+(Controls may return MANUAL when a required session is not present.)
 
 ---
 
 ## 📦 Requirements
-- **PowerShell**: Windows PowerShell 5.1 or PowerShell 7+
-- **Modules** (install if missing):
+- PowerShell 7+ recommended (Windows PowerShell 5.1 may work, but modern modules assume PowerShell 7+).
+- Optional modules (install if you want automated Graph/Exchange checks):
   ```powershell
   Install-Module Microsoft.Graph -Scope CurrentUser
   Install-Module ExchangeOnlineManagement -Scope CurrentUser
   ```
-- **Permissions**:
-  - Microsoft Graph: `Directory.Read.All` (delegated) when prompted.
-  - Exchange Online: Ability to connect and read org settings (e.g., Security Reader/Global Reader or EXO role with equivalent rights).
-
-> Tip: The module will attempt to connect interactively if required permissions/sessions are not already present.
+- Appropriate permissions for the account you use to sign in (e.g., Directory.Read.All, Directory Roles read, Global Reader, or equivalent delegated rights).
 
 ---
 
@@ -45,12 +56,10 @@ Import-Module .\CISM365Audit.psd1 -Force
 Import-Module .\CISM365Audit.psm1 -Force
 ```
 
-> You can also copy the entire folder into one of your `$env:PSModulePath` locations to import by name.
-
 ---
 
 ## 🚀 Quick Start
-Run an audit for your tenant (use your tenant's initial domain like `contoso.onmicrosoft.com` or your vanity domain where applicable):
+Run an audit for your tenant (use your tenant's initial domain like `contoso.onmicrosoft.com`):
 
 ```powershell
 Start-CISM365Audit -Tenant "contoso.onmicrosoft.com"
@@ -60,72 +69,67 @@ This generates `CISM365AuditReport.html` in the working directory.
 
 ---
 
+## 🔌 Connect behavior (what changed)
+- Start-CISM365Audit inspects all discovered controls and builds a deduped list of required services (the control descriptors expose `Services = @('Graph')`, etc.).
+- If Graph is required and the Microsoft.Graph SDK is available but no Graph context exists, Connect-CISM365Services will attempt `Connect-MgGraph` interactively.
+- If ExchangeOnline is required and the ExchangeOnlineManagement module is available but no session exists, it will attempt `Connect-ExchangeOnline` interactively.
+- Other admin surfaces (AdminCenter, ConditionalAccess, SharePoint, Teams, Compliance) remain manual by default — Connect-CISM365Services will print verbose guidance rather than attempt brittle automation.
+
+If you prefer to pre-authenticate manually (or to use non-interactive app-only auth), run the appropriate Connect-* cmdlets before invoking Start-CISM365Audit or use `-NoConnect` to skip the centralized connect attempt.
+
+---
+
 ## 📚 Usage Examples
-### 1) Basic audit with default output
+### Basic run (interactive sign-in if needed)
 ```powershell
-Start-CISM365Audit -Tenant "contoso.onmicrosoft.com"
+Start-CISM365Audit -Tenant "contoso.onmicrosoft.com" -Verbose
 ```
 
-### 2) Custom output path
+### Skip automatic connection (operator will sign in manually)
 ```powershell
-Start-CISM365Audit -Tenant "contoso.onmicrosoft.com" -OutputPath ".\Reports\report.html"
+Start-CISM365Audit -Tenant "contoso.onmicrosoft.com" -NoConnect
 ```
 
-### 3) Verbose logging (helpful for connection and control flow)
+### JSON + HTML output
 ```powershell
-$VerbosePreference = 'Continue'
-Start-CISM365Audit -Tenant "contoso.onmicrosoft.com"
-$VerbosePreference = 'SilentlyContinue'
+Start-CISM365Audit -Tenant "contoso.onmicrosoft.com" -JsonOutputPath .\out\audit.json -OutputPath .\out\audit.html
 ```
-
-### 4) (Optional) Pre-connect to services
-If your module version exports `Connect-CISM365Services`, you can connect up-front and then run the audit:
-```powershell
-# Connect to Microsoft Graph & Exchange Online (interactive)
-Connect-CISM365Services -Scopes 'Directory.Read.All' -Organization "contoso.onmicrosoft.com"
-
-# Run the audit
-Start-CISM365Audit -Tenant "contoso.onmicrosoft.com" -OutputPath .\CISM365AuditReport.html
-```
-> If `Connect-CISM365Services` is not exported in your build, `Start-CISM365Audit` will still attempt to connect as needed.
 
 ---
 
 ## 🧾 Output
-- **HTML report** (default: `CISM365AuditReport.html`) with a summary and a table of controls:
-  - **PASS** – The control meets the benchmark requirement.
-  - **FAIL** – The control does not meet the requirement.
-  - **MANUAL** – Requires manual review or information not available via API/cmdlet.
-  - **ERROR** – An exception occurred while evaluating the control.
+- HTML report (default: `CISM365AuditReport.html`) with summary and control table.
+- JSON output if `-JsonOutputPath` is supplied.
 
 ---
 
-## 🛠️ Troubleshooting
-- **Missing modules**: Install required modules (see Requirements) and re-import the module.
-- **Graph consent**: First-time Graph sign-in may require admin consent for `Directory.Read.All`.
-- **EXO connection**: If `Get-ConnectionInformation` shows not connected, run `Connect-ExchangeOnline -Organization <tenant>` and retry.
-- **Permissions**: Use an account with at least **Global Reader/Security Reader** for tenant-wide reads.
+## 🧭 Roadmap
+- Improve HTML styling and layout.
+- Broaden control coverage across the CIS benchmark.
+- Optional: Add app-only authentication flows for CI/CD.
+- Optional: Export Connect/Disconnect helpers for consumers.
 
 ---
 
-## 🧭 Roadmap (Next)
-- Improve HTML styling (summary badges, consistent colors, better layout).
-- Expand control coverage (additional CIS v3.0.0 items, then v5 mapping).
-- Optional: Export `Connect-CISM365Services` and add `Disconnect-CISM365Services`.
-- Optional: App-only authentication for CI/CD.
+## 🛠 Troubleshooting
+- "Authentication needed. Please call Connect-MgGraph." — Either run Start-CISM365Audit without `-NoConnect` so it can prompt for Graph sign-in, or sign-in manually with `Connect-MgGraph` before running.
+- Parameter-binding errors when splatting connection parameters — resolved in v0.0.6 by making Connect-CISM365Services accept common splatted keys (`Tenant`, `TenantId`, `TenantDomain`, `Credential`, `ErrorOnFailure`).
+- Missing modules — install Microsoft.Graph or ExchangeOnlineManagement as needed.
 
 ---
 
 ## 🔖 Versioning & Changelog
 - Version tags follow `v<major>.<minor>.<patch>`.
-- See [CHANGELOG.md](CHANGELOG.md) for details.
+- See CHANGELOG.md for details for v0.0.6.
 
 ---
 
 ## 🤝 Contributing
-Issues and PRs are welcome. Keep changes minimal and focused; prefer incremental versions (e.g., `0.0.2`, `0.0.3`).
+Contributions, issues, and PRs are welcome. When adding new controls:
+- Declare required services via the control descriptor's `Services` array (e.g., `Services = @('Graph')`) so the runner can attempt centralized sign-in.
+- Prefer session-preserving controls: detect session presence and return MANUAL if absent.
 
 ---
 
 ## ⚠️ Disclaimer
-This project is not affiliated with or endorsed by the Center for Internet Security (CIS). Control mappings are provided for convenience and may require validation against the official benchmark for your environment.
+This project is not affiliated with or endorsed by the Center for Internet Security (CIS). Control mappings are provided for convenience and may require validation against the official benchmark.
