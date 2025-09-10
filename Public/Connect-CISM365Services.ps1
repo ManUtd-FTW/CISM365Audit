@@ -1,198 +1,170 @@
 function Connect-CISM365Services {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Low')]
+    [CmdletBinding()]
     param(
-        [Parameter()]
-        [ValidateSet('Graph','ExchangeOnline')]
-        [string[]] $Services = @('Graph','ExchangeOnline'),
+        [Parameter(Mandatory=$false)]
+        [string[]] $Services = @(),
 
-        [Parameter()] [string] $TenantId,
-        [Parameter()] [string] $TenantDomain,
+        # Accept common splatted parameters so callers that use @connParams do not cause a parameter-binding error.
+        [Parameter(Mandatory=$false)]
+        [string] $Tenant,
 
-        [Parameter()]
-        [string[]] $GraphScopes = @(
-            'Directory.Read.All',
-            'Reports.Read.All',
-            'RoleManagement.Read.Directory',
-            'User.Read.All'
-        ),
+        [Parameter(Mandatory=$false)]
+        [string] $TenantId,
 
-        [Parameter()] [switch] $DeviceCode,
-        [Parameter()] [switch] $NoInstall,
-        [Parameter()] [switch] $ForceReauth,
-        [Parameter()] [switch] $ErrorOnFailure
+        [Parameter(Mandatory=$false)]
+        [string] $TenantDomain,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential] $Credential,
+
+        # Some callers pass ErrorOnFailure in their splat; accept it so parameter binding doesn't fail.
+        [Parameter(Mandatory=$false)]
+        [switch] $ErrorOnFailure
     )
 
-    begin {
-        $result = [ordered]@{
-            Graph          = [ordered]@{ Connected = $false; Details = $null; Error = $null }
-            ExchangeOnline = [ordered]@{ Connected = $false; Details = $null; Error = $null }
-        }
+    # Keep behaviour minimal and lean:
+    # - Map a loose set of service identifiers to canonical names
+    # - If 'Graph' is requested, attempt Connect-MgGraph (interactive) only if cmdlets exist and no context is present
+    # - If 'ExchangeOnline' is requested, attempt Connect-ExchangeOnline (interactive) only if module exists and no session is present
+    # - For other services, do not attempt automatic connection; emit verbose guidance
+    # - Do not throw unless ErrorOnFailure is set; otherwise warn and continue
 
-        function Ensure-Module {
-            param(
-                [Parameter(Mandatory)][string]$Name,
-                [string]$MinimumVersion
-            )
-        
-            # Try import first
-            try {
-                if ($MinimumVersion) {
-                    Import-Module -Name $Name -MinimumVersion $MinimumVersion -ErrorAction Stop | Out-Null
-                } else {
-                    Import-Module -Name $Name -ErrorAction Stop | Out-Null
-                }
-                Write-Verbose ("Imported module {0}." -f $Name)
-                return
-            }
-            catch {
-                if ($NoInstall) {
-                    throw ("Module {0} not available and -NoInstall set." -f $Name)
-                }
-        
-                Write-Verbose ("Module {0} not present; attempting user-scope install." -f $Name)
-        
-                # Prefer Install-Module (PowerShellGet) with CurrentUser scope
-                if (Get-Command -Name Install-Module -ErrorAction SilentlyContinue) {
-                    try {
-                        Install-Module -Name $Name -Scope CurrentUser -Force -ErrorAction Stop
-                        Import-Module -Name $Name -ErrorAction Stop | Out-Null
-                        Write-Verbose ("Installed and imported {0} via Install-Module (CurrentUser)." -f $Name)
-                        return
-                    }
-                    catch {
-                        Write-Verbose ("Install-Module (CurrentUser) failed for {0}: {1}" -f $Name, $_.Exception.Message)
-                    }
-                }
-        
-                # Try PSResource install with CurrentUser scope if available
-                if (Get-Command -Name Install-PSResource -ErrorAction SilentlyContinue) {
-                    try {
-                        Install-PSResource -Name $Name -Scope CurrentUser -TrustRepository -Quiet -ErrorAction Stop
-                        Import-Module -Name $Name -ErrorAction Stop | Out-Null
-                        Write-Verbose ("Installed and imported {0} via Install-PSResource (CurrentUser)." -f $Name)
-                        return
-                    }
-                    catch {
-                        Write-Verbose ("Install-PSResource (CurrentUser) failed for {0}: {1}" -f $Name, $_.Exception.Message)
-                    }
-                }
-        
-                # Fallback for Microsoft.Graph submodules: try installing meta-module in user scope
-                if ($Name -like 'Microsoft.Graph*') {
-                    try {
-                        Write-Verbose "Falling back to installing 'Microsoft.Graph' meta-module (CurrentUser)."
-                        if (Get-Command -Name Install-Module -ErrorAction SilentlyContinue) {
-                            Install-Module -Name 'Microsoft.Graph' -Scope CurrentUser -Force -ErrorAction Stop
-                            Import-Module -Name 'Microsoft.Graph' -ErrorAction Stop | Out-Null
-                            Write-Verbose "Installed and imported 'Microsoft.Graph' meta-module via Install-Module (CurrentUser)."
-                            return
-                        }
-                        if (Get-Command -Name Install-PSResource -ErrorAction SilentlyContinue) {
-                            Install-PSResource -Name 'Microsoft.Graph' -Scope CurrentUser -TrustRepository -Quiet -ErrorAction Stop
-                            Import-Module -Name 'Microsoft.Graph' -ErrorAction Stop | Out-Null
-                            Write-Verbose "Installed and imported 'Microsoft.Graph' meta-module via Install-PSResource (CurrentUser)."
-                            return
-                        }
-                        throw "No supported installer available to install Microsoft.Graph into CurrentUser scope."
-                    }
-                    catch {
-                        throw ("Failed to install/import {0} or fallback Microsoft.Graph into CurrentUser scope: {1}" -f $Name, $_.Exception.Message)
-                    }
-                }
-        
-                # Final failure path with actionable guidance
-                throw ("Failed to install/import {0}: {1}. To fix, either run PowerShell as Administrator to allow system installs, pre-install the module, or rerun with -NoInstall and ensure the required modules are available." -f $Name, $_.Exception.Message)
-            }
-        }
-
-        # Minimal Microsoft Graph submodules used by controls
-        $minimalGraphModules = @(
-            'Microsoft.Graph.Authentication',
-            'Microsoft.Graph.DirectoryRoles',
-            'Microsoft.Graph.Identity.SignIns',
-            'Microsoft.Graph.Reports'
-        )
+    $canonical = @{
+        'GRAPH'             = 'Graph'
+        'MICROSOFTGRAPH'    = 'Graph'
+        'EXCHANGEONLINE'    = 'ExchangeOnline'
+        'EXO'               = 'ExchangeOnline'
+        'ADMIN'             = 'AdminCenter'
+        'ADMINCENTER'       = 'AdminCenter'
+        'CONDITIONALACCESS' = 'ConditionalAccess'
+        'CONDITIONAL'       = 'ConditionalAccess'
+        'SHAREPOINT'        = 'SharePoint'
+        'TEAMS'             = 'Teams'
+        'COMPLIANCE'        = 'Compliance'
     }
 
-    process {
-        if ($ForceReauth) {
-            try { Disconnect-CISM365Services -Services $Services -ErrorAction SilentlyContinue } catch {}
+    if (-not $Services -or $Services.Count -eq 0) {
+        Write-Verbose "Connect-CISM365Services: No services requested; nothing to do."
+        return $null
+    }
+
+    $requested = $Services | ForEach-Object { ($_ -as [string]).Trim() } | Where-Object { $_ -ne '' } | Select-Object -Unique
+    $mapped = @()
+
+    foreach ($r in $requested) {
+        $key = $r.ToUpperInvariant()
+        if ($canonical.ContainsKey($key)) {
+            $mapped += $canonical[$key]
+        } else {
+            $found = $canonical.Keys | Where-Object { $_ -like "*$key*" -or $key -like "*$_*" }
+            if ($found -and $found.Count -gt 0) {
+                $mapped += $canonical[$found[0]]
+            } else {
+                Write-Verbose "Connect-CISM365Services: Unknown service '$r' requested; it will be treated as manual. Ensure a session is present for this service."
+            }
         }
+    }
 
-        # GRAPH
-        if ($Services -contains 'Graph') {
-            try {
-                foreach ($m in $minimalGraphModules) { Ensure-Module -Name $m }
+    $mapped = $mapped | Select-Object -Unique
 
-                $connectArgs = @{ ErrorAction = 'Stop'; Scopes = $GraphScopes }
-                if ($TenantId)   { $connectArgs['TenantId'] = $TenantId }
-                if ($DeviceCode) { $connectArgs['UseDeviceCode'] = $true }
+    if ($mapped.Count -eq 0) {
+        Write-Verbose "Connect-CISM365Services: No supported services to connect after mapping; exiting."
+        return $null
+    }
 
-                Write-Verbose ("Connecting to Microsoft Graph (Global) with scopes: {0}" -f ($GraphScopes -join ', '))
-                Connect-MgGraph @connectArgs | Out-Null
+    Write-Verbose ("Connect-CISM365Services: Services to ensure connection for: {0}" -f ($mapped -join ', '))
+    if ($Tenant) { Write-Verbose ("Connect-CISM365Services: Tenant (splat) provided: {0}" -f $Tenant) }
+    if ($TenantId) { Write-Verbose ("Connect-CISM365Services: TenantId (splat) provided: {0}" -f $TenantId) }
+    if ($TenantDomain) { Write-Verbose ("Connect-CISM365Services: TenantDomain (splat) provided: {0}" -f $TenantDomain) }
+    if ($PSBoundParameters.ContainsKey('ErrorOnFailure') -and $ErrorOnFailure) { Write-Verbose "Connect-CISM365Services: ErrorOnFailure is set; failures will be thrown." }
 
-                $ctx = $null
-                try { $ctx = Get-MgContext -ErrorAction Stop } catch { $ctx = $null }
+    # Helper: failure handling
+    function Handle-Failure {
+        param($Message, $ErrRecord)
+        $errText = if ($ErrRecord -and $ErrRecord.Exception) { $ErrRecord.Exception.Message } else { $ErrRecord.ToString() }
+        if ($PSBoundParameters.ContainsKey('ErrorOnFailure') -and $ErrorOnFailure) {
+            throw [System.Exception]::new(("{0}: {1}" -f $Message, $errText))
+        } else {
+            Write-Warning ("{0}: {1}" -f $Message, $errText)
+        }
+    }
 
+    # Auto-connect Graph when requested and possible
+    if ($mapped -contains 'Graph') {
+        try {
+            if (-not (Get-Command -Name Get-MgContext -ErrorAction SilentlyContinue)) {
+                Write-Verbose "Connect-CISM365Services: Microsoft.Graph SDK cmdlets not available; skipping Graph auto-connect."
+            } else {
+                $ctx = Get-MgContext -ErrorAction SilentlyContinue
                 if (-not $ctx) {
-                    $result.Graph.Error = 'Get-MgContext returned $null; Graph connection may not have completed.'
-                    Write-Warning $result.Graph.Error
-                } else {
-                    $result.Graph.Connected = $true
-                    $result.Graph.Details = [ordered]@{
-                        Account  = $ctx.Account
-                        TenantId = $ctx.TenantId
-                        Scopes   = ($ctx.Scopes -join ', ')
-                        Cloud    = 'Global'
+                    Write-Verbose "Connect-CISM365Services: No active Microsoft Graph context detected. Attempting Connect-MgGraph (interactive)."
+                    try {
+                        if ($PSBoundParameters.ContainsKey('Credential')) {
+                            Connect-MgGraph -Credential $Credential -ErrorAction Stop
+                        } elseif ($PSBoundParameters.ContainsKey('TenantId')) {
+                            Connect-MgGraph -TenantId $TenantId -ErrorAction Stop
+                        } elseif ($PSBoundParameters.ContainsKey('TenantDomain')) {
+                            Connect-MgGraph -Tenant $TenantDomain -ErrorAction Stop
+                        } elseif ($PSBoundParameters.ContainsKey('Tenant')) {
+                            Connect-MgGraph -Tenant $Tenant -ErrorAction Stop
+                        } else {
+                            Connect-MgGraph -ErrorAction Stop
+                        }
+                        Write-Verbose "Connect-CISM365Services: Connect-MgGraph succeeded."
+                    } catch {
+                        Handle-Failure "Connect-CISM365Services: Connect-MgGraph failed or was cancelled" $_
                     }
+                } else {
+                    Write-Verbose "Connect-CISM365Services: Existing Microsoft Graph context detected."
                 }
             }
-            catch {
-                $result.Graph.Error = ($_ | Out-String).Trim()
-                Write-Warning ("Graph connection failed: {0}" -f $result.Graph.Error)
-            }
+        } catch {
+            Handle-Failure "Connect-CISM365Services: Unexpected error when checking/connecting Graph" $_
         }
-
-        # EXCHANGE ONLINE
-        if ($Services -contains 'ExchangeOnline') {
-            try {
-                Ensure-Module -Name 'ExchangeOnlineManagement'
-                $exoArgs = @{ ShowBanner = $false ; ErrorAction = 'Stop' }
-                if ($TenantDomain) { $exoArgs['Organization'] = $TenantDomain }
-                if ($DeviceCode)   { $exoArgs['UseWebLogin'] = $true }
-
-                Write-Verbose "Connecting to Exchange Online (Global)..."
-                Connect-ExchangeOnline @exoArgs
-
-                $conn = $null
-                try { $conn = Get-ConnectionInformation -ErrorAction SilentlyContinue } catch {}
-                $connectedAs = if ($conn) { $conn.UserPrincipalName } else { $null }
-
-                $result.ExchangeOnline.Connected = $true
-                $result.ExchangeOnline.Details = [ordered]@{
-                    Organization = $TenantDomain
-                    ConnectedAs  = $connectedAs
-                }
-            }
-            catch {
-                $result.ExchangeOnline.Error = ($_ | Out-String).Trim()
-                Write-Warning ("Exchange Online connection failed: {0}" -f $result.ExchangeOnline.Error)
-            }
-        }
-
-        # Fail-fast if requested
-        if ($ErrorOnFailure) {
-            $failed = @()
-            foreach ($svc in $Services) {
-                if (-not $result[$svc].Connected) {
-                    $failed += ("{0}: {1}" -f $svc, ($result[$svc].Error -ne $null ? $result[$svc].Error : 'Unknown error'))
-                }
-            }
-            if ($failed.Count -gt 0) {
-                throw ("One or more connections failed: {0}" -f ($failed -join '; '))
-            }
-        }
-
-        return [PSCustomObject]$result
     }
+
+    # Auto-connect ExchangeOnline when requested and possible
+    if ($mapped -contains 'ExchangeOnline') {
+        try {
+            if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+                Write-Verbose "Connect-CISM365Services: ExchangeOnlineManagement module not available; skipping ExchangeOnline auto-connect."
+            } else {
+                $exoSession = Get-PSSession -ErrorAction SilentlyContinue | Where-Object {
+                    ($_.ConfigurationName -and ($_.ConfigurationName -match 'Microsoft.Exchange')) -or
+                    ($_.ConnectionUri -and ($_.ConnectionUri -match 'exchange'))
+                }
+                if (-not $exoSession) {
+                    Write-Verbose "Connect-CISM365Services: No active Exchange Online session detected. Attempting Connect-ExchangeOnline (interactive)."
+                    try {
+                        if ($PSBoundParameters.ContainsKey('Credential')) {
+                            Connect-ExchangeOnline -Credential $Credential -ShowBanner:$false -ErrorAction Stop
+                        } elseif ($PSBoundParameters.ContainsKey('TenantId')) {
+                            Connect-ExchangeOnline -TenantId $TenantId -ShowBanner:$false -ErrorAction Stop
+                        } elseif ($PSBoundParameters.ContainsKey('TenantDomain')) {
+                            Connect-ExchangeOnline -Organization $TenantDomain -ShowBanner:$false -ErrorAction Stop
+                        } elseif ($PSBoundParameters.ContainsKey('Tenant')) {
+                            Connect-ExchangeOnline -Organization $Tenant -ShowBanner:$false -ErrorAction Stop
+                        } else {
+                            Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+                        }
+                        Write-Verbose "Connect-CISM365Services: Connect-ExchangeOnline succeeded."
+                    } catch {
+                        Handle-Failure "Connect-CISM365Services: Connect-ExchangeOnline failed or was cancelled" $_
+                    }
+                } else {
+                    Write-Verbose "Connect-CISM365Services: Existing Exchange Online session detected."
+                }
+            }
+        } catch {
+            Handle-Failure "Connect-CISM365Services: Unexpected error when checking/connecting ExchangeOnline" $_
+        }
+    }
+
+    # Other services: instruct operator (lean approach; avoid adding more auto-connect complexity)
+    $others = $mapped | Where-Object { $_ -notin @('Graph','ExchangeOnline') }
+    foreach ($svc in $others) {
+        Write-Verbose "Connect-CISM365Services: Automatic connection for '$svc' is not implemented. Ensure an active session exists for this service before running automated checks."
+    }
+
+    return $null
 }
