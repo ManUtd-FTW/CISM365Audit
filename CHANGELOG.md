@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.0.7] - 2025-09-10
+### Added
+- New controls under `Private/Controls/`:
+  - 2.x.x, 3.x.x (initial batch)
+
+### Updated
+- Report layout
+
 ## [0.0.6] - 2025-09-08
 ### Added
 - Centralized Connect-CISM365Services helper that accepts a flexible set of service identifiers and common splatted parameters (Tenant, TenantId, TenantDomain, Credential, ErrorOnFailure). This prevents parameter-binding errors when the runner splats connection parameters.
@@ -12,6 +20,7 @@ All notable changes to this project are documented in this file.
 - Controls updated to be session-preserving:
   - Controls that rely on Microsoft Graph (example: Control.1.1.1.CloudOnlyAdmins) now check for the Microsoft Graph PowerShell SDK and an active context (`Get-MgContext`) and return a `MANUAL` result with clear remediation if no session exists, rather than attempting sign-in themselves.
 - Connect-CISM365Services now maps common aliases (e.g., `AdminCenter`), warns for services that must be connected manually (AdminCenter, ConditionalAccess, SharePoint, Teams, Compliance), and will not fail the runner on unsupported splatted parameters.
+
 
 ### Changed
 - Start-CISM365Audit
