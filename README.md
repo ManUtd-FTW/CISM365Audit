@@ -1,8 +1,8 @@
 # CISM365Audit
 
-Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of the **CIS Microsoft 365 Foundations Benchmark (v5.0.0.3)** and produce a simple HTML report.
+Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of the **Microsoft/CIS/NIST 365 Security Best Practices** and produce a simple HTML report.
 
-> **Status:** v0.0.7 (latest)
+> **Status:** v0.0.6 (latest)
 
 ---
 
@@ -13,12 +13,12 @@ Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of th
 - **Updated report layout** for improved readability and summary.
 - Minimal HTML report with PASS / FAIL / MANUAL / ERROR states.
 
-## ✅ Controls Implemented (v0.0.7)
+## ✅ Controls Implemented (v0.0.6)
 - Existing controls:
   - **1.1.3** – Ensure that between two and four Global Admins are designated (via Microsoft Graph; counts users including group membership).
   - **2.1.9** – Ensure that DKIM is enabled for all Exchange Online domains (custom authoritative domains only).
   - **2.1.1** – Ensure Safe Links for Office applications is enabled (reads `Get-AtpPolicyForO365`).
-- **New controls added in v0.0.7:**
+- **New controls added in v0.0.6:**
     - **2.2.x** – 
     - **3.1.x** – 
 
@@ -133,4 +133,5 @@ Issues and PRs are welcome. Keep changes minimal and focused; prefer incremental
 ---
 
 ## ⚠️ Disclaimer
+
 This project is not affiliated with or endorsed by the Center for Internet Security (CIS). Control mappings are provided for convenience and may require validation against the official benchmark for your environment.
