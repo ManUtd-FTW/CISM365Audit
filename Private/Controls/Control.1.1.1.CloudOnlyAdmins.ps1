@@ -16,6 +16,7 @@ function Get-CISM365Control_1_1_1 {
             'https://maester.dev/docs/tests/cis/',
             'https://learn.microsoft.com/graph/api/resources/user#properties'
         )
+Notes       = 'Testing the notes section to see if this shows up properly.'
         Audit       = {
             try {
                 # Lazy-load tenant helper only at audit runtime (safe: no top-level actions)

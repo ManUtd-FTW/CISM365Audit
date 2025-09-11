@@ -10,8 +10,11 @@ function New-CISM365HtmlReport {
     - Optionally writes to -OutFile.
     - Status text is displayed below the control name as a colored pill/badge.
     - Table of Contents (TOC) entries now have clear vertical spacing.
-    - Pills in summary only show status name (PASS/FAIL/MANUAL/ERROR).
+    - Pills in summary show status name (PASS/FAIL/MANUAL/ERROR) and count.
     - Evidence and Audit Steps moved to Show Details area.
+    - For MANUAL controls, includes the .Audit property in Show Details.
+    - Each Control includes a scaffolded Notes section for manual entry, always at the bottom of Show Details.
+    - If .Notes is provided in the result, it is displayed in the Notes section.
 #>
     [CmdletBinding()]
     [OutputType([string])]
@@ -138,6 +141,14 @@ function New-CISM365HtmlReport {
         $color       = Get-StatusColor -Status $statusText
         $refsHtml    = Build-ReferenceLinks -Refs $r.References
 
+        # Handle Notes: If .Notes provided, encode and display it, else show placeholder
+        $notesHtml = ""
+        if ($r.PSObject.Properties.Name -contains "Notes" -and $r.Notes -and $r.Notes.Trim()) {
+            $notesHtml = "<p class='notes'><strong>Notes:</strong> " + (& $EncodeHtml $r.Notes) + "</p>`n"
+        } else {
+            $notesHtml = "<p class='notes'><strong>Notes:</strong> <em>(Add notes here)</em></p>`n"
+        }
+
         # Build Show Details content with Evidence and Audit inside if present
         $detailsPanel = @"
       <p><strong>Description:</strong> $desc</p>
@@ -150,6 +161,12 @@ function New-CISM365HtmlReport {
         if ($audit) {
             $detailsPanel += "<p><strong>Audit Steps:</strong> $audit</p>`n"
         }
+        # If this control is MANUAL and has a .Audit property, add it.
+        if ($statusText -like "MANUAL*" -and $r.PSObject.Properties.Name -contains "Audit" -and $r.Audit) {
+            $detailsPanel += "<p><strong>Manual Audit Steps:</strong> $($r.Audit)</p>`n"
+        }
+        # Notes section at the bottom (uses $notesHtml)
+        $detailsPanel += "<hr />$notesHtml"
 
         [void]$sectionBuilders[$prefix].AppendLine(@"
 <div class='control'>
@@ -199,8 +216,19 @@ function New-CISM365HtmlReport {
 
     $tocHtml = "<nav class='toc'><ul>" + $tocBuilder.ToString() + "</ul></nav>"
     $bodySections = $bodyBuilder.ToString()
+    $generatedOn = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    $logoHtml = ""
+    if ($LogoPath) {
+        $logoHtml = "<img src='$LogoPath' class='logo' alt='Logo' />"
+    }
 
-    # Minimal summary pills: only status word
+    # BULLETPROOF summary pills: use results directly, not $Summary object!
+    $passCount   = ($Results | Where-Object { $_.Status -like 'PASS*' }).Count
+    $failCount   = ($Results | Where-Object { $_.Status -like 'FAIL*' }).Count
+    $manualCount = ($Results | Where-Object { $_.Status -like 'MANUAL*' }).Count
+    $errorCount  = ($Results | Where-Object { $_.Status -like 'ERROR*' }).Count
+    $totalCount  = $Results.Count
+
     $html = @"
 <!doctype html>
 <html lang='en'>
@@ -328,6 +356,7 @@ function New-CISM365HtmlReport {
     .collapsible{color:var(--link);background:none;border:none;font-size:13px;cursor:pointer;padding:0;display:inline;}
     .collapsible:focus{outline:2px solid var(--link);}
     .details-panel{margin-top:8px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px}
+    .notes { margin-top: 16px; font-size: 13px; color: #244a67; }
     .empty{color:var(--muted);padding:10px;background:#fbfbfb;border-radius:6px;border:1px dashed var(--border)}
     @media (min-width: 1100px){
       .layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}
@@ -345,11 +374,11 @@ function New-CISM365HtmlReport {
   </header>
 
   <section class='summary'>
-    <span class='pill p-pass'>PASS</span>
-    <span class='pill p-fail'>FAIL</span>
-    <span class='pill p-man'>MANUAL</span>
-    <span class='pill p-err'>ERROR</span>
-    <span class='pill' style='background:#374151'>TOTAL: $($Summary.Total)</span>
+    <span class='pill p-pass'>PASS ($passCount)</span>
+    <span class='pill p-fail'>FAIL ($failCount)</span>
+    <span class='pill p-man'>MANUAL ($manualCount)</span>
+    <span class='pill p-err'>ERROR ($errorCount)</span>
+    <span class='pill' style='background:#374151'>TOTAL: $totalCount</span>
   </section>
 
   <div class='layout'>

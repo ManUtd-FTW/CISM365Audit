@@ -150,7 +150,8 @@ function Start-CISM365Audit {
             Status      = $statusText
             Findings    = $findings
             Remediation = $remediation
-            RawResult   = $raw
+Notes       = $ctrl.Notes            
+RawResult   = $raw
         }
     }
 
