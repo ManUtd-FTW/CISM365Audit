@@ -2,10 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.0.7] - 2025-09-10
+## [0.0.7] - 2025-09-11
 ### Added
 - New controls under `Private/Controls/`:
-  - 2.x.x, 3.x.x (initial batch)
+  - 2.x.x, 3.x.x, 4.x.x, 5.x.x, 6.x.x, 7.x.x, 8.x.x, 9.x.x (initial batch)
 
 ### Updated
 - Report layout
