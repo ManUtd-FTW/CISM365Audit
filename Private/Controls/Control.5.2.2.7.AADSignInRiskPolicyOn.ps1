@@ -1,4 +1,4 @@
-function Get-CISM365Control_5_2_2_7{
+function Get-CISM365Control_5_2_2_7 {
     [OutputType([hashtable])]
     param()
 
@@ -7,7 +7,7 @@ function Get-CISM365Control_5_2_2_7{
         Name = 'Ensure Azure AD Identity Protection sign-in risk policy is enabled'
         Profile = 'L1'
         Automated = $true
-        Services = @('AzureAD')
+        Services = @('Graph')
         Description = @'
 Ensure that the Azure AD Identity Protection sign-in risk policy is enabled to automatically respond to risky sign-ins and reduce the risk of account compromise.
 '@
@@ -20,22 +20,38 @@ Sign-in risk policies help detect and respond to suspicious sign-in behavior by 
         )
         Audit = {
             try {
-                $policy = Get-AzureADMSConditionalAccessPolicy | Where-Object {
-                    $_.Conditions.Users.Include -contains "All" -and
+                # Ensure the module is available
+                if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Identity.SignIns)) {
+                    Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser -Force
+                }
+
+                # Connect to Graph if not already connected
+                if (-not (Get-MgContext)) {
+                    Connect-MgGraph -Scopes "Policy.Read.All"
+                }
+
+                # Retrieve all Conditional Access policies
+                $policies = Get-MgIdentityConditionalAccessPolicy -All
+
+                # Filter for sign-in risk policies (Graph property names)
+                $signInRiskPolicies = $policies | Where-Object {
+                    $_.Conditions.Users.IncludeUsers -contains "All" -and
                     $_.Conditions.SignInRiskLevels -ne $null
                 }
 
-                if (-not $policy) {
+                if (-not $signInRiskPolicies) {
                     "FAIL (No sign-in risk policy found)"
                     return
                 }
 
-                $enabled = $policy.State -eq "enabled"
+                $enabledPolicy = $signInRiskPolicies | Where-Object { $_.State -eq "enabled" } | Select-Object -First 1
 
-                if ($enabled) {
-                    "PASS (Sign-in risk policy is enabled: $($policy.DisplayName))"
-                } else {
-                    "FAIL (Sign-in risk policy exists but is not enabled: $($policy.DisplayName))"
+                if ($enabledPolicy) {
+                    "PASS (Sign-in risk policy is enabled: $($enabledPolicy.DisplayName))"
+                }
+                else {
+                    $disabled = $signInRiskPolicies | Select-Object -First 1
+                    "FAIL (Sign-in risk policy exists but is not enabled: $($disabled.DisplayName))"
                 }
             }
             catch {

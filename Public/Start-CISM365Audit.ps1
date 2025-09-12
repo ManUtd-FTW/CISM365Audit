@@ -17,6 +17,13 @@ function Start-CISM365Audit {
         [switch]$DeviceCode
     )
 
+    # Dot-source Connect-CISM365Services.ps1 so its functions are available
+    $connectScriptPath = Join-Path $PSScriptRoot "Connect-CISM365Services.ps1"
+    if (-not (Test-Path $connectScriptPath)) {
+        throw "Start-CISM365Audit: Required file Connect-CISM365Services.ps1 not found in $PSScriptRoot"
+    }
+    . $connectScriptPath
+
     # --- Resolve TenantId or TenantDomain ---
     $tenantId = $null
     $tenantDomain = $null
@@ -42,7 +49,6 @@ function Start-CISM365Audit {
     }
 
     # --- Sort the catalog by control Id in ascending, numeric-aware order ---
-    # This pads each numeric segment of the Id so "1.2.10" sorts after "1.2.2".
     $catalog = $catalog | Sort-Object -Property @{
         Expression = {
             try {
@@ -51,7 +57,6 @@ function Start-CISM365Audit {
                     ForEach-Object { [int]$_ } |
                     ForEach-Object { $_.ToString('D4') }) -join '.'
             } catch {
-                # Fallback to raw Id if anything unexpected appears
                 $_.Id
             }
         }
@@ -60,11 +65,15 @@ function Start-CISM365Audit {
 
     # --- Connect to required services unless -NoConnect ---
     if (-not $NoConnect) {
-        # Aggregate requested services from the catalog (flatten and dedupe)
+        # Use only modern, supported services: Graph, ExchangeOnline, Teams, SharePoint
+        $supportedServices = @("Graph", "ExchangeOnline", "SharePoint")
+
+        # Aggregate requested services from the catalog (flatten and dedupe, filter for supported only)
         $servicesNeeded = $catalog |
             ForEach-Object { if ($_.Services) { $_.Services } } |
             Where-Object { $_ } |
             ForEach-Object { ($_ -as [string]).Trim() } |
+            Where-Object { $supportedServices -contains $_ } |
             Select-Object -Unique
 
         if ($servicesNeeded -and $servicesNeeded.Count -gt 0) {
@@ -76,12 +85,10 @@ function Start-CISM365Audit {
             if ($tenantId)     { $connParams['TenantId']   = $tenantId }
             if ($tenantDomain) { $connParams['TenantDomain'] = $tenantDomain }
 
-            # Note: Connect-CISM365Services currently accepts Tenant/TenantId/TenantDomain/Credential/ErrorOnFailure.
-            # We do not pass DeviceCode unless Connect-CISM365Services exposes that parameter.
             Write-Verbose ("Start-CISM365Audit: Ensuring sessions for services: {0}" -f ($servicesNeeded -join ', '))
             $null = Connect-CISM365Services @connParams
         } else {
-            Write-Verbose "Start-CISM365Audit: No services required by selected controls."
+            Write-Verbose "Start-CISM365Audit: No supported services required by selected controls."
         }
     } else {
         Write-Verbose "Start-CISM365Audit: Skipping service connection per -NoConnect."
@@ -91,7 +98,6 @@ function Start-CISM365Audit {
     $results = foreach ($ctrl in $catalog) {
         Write-Verbose ("Evaluating control {0}: {1}" -f $ctrl.Id, $ctrl.Name)
         try {
-            # Controls provide an Audit scriptblock. If Audit is not a ScriptBlock, treat as MANUAL descriptor.
             if ($null -eq $ctrl.Audit) {
                 $raw = [PSCustomObject]@{
                     Status = 'MANUAL'
@@ -110,7 +116,6 @@ function Start-CISM365Audit {
             }
         }
 
-        # Normalize raw result into predictable fields (Status as string, Findings, Remediation, References)
         $statusText = $null
         $findings = $null
         $remediation = $null
@@ -122,17 +127,14 @@ function Start-CISM365Audit {
         } elseif ($raw -is [string]) {
             $statusText = $raw
         } elseif ($raw -is [hashtable] -or $raw -is [PSCustomObject]) {
-            # Accept both hashtable and PSCustomObject
             $statusText = ($raw.Status -as [string])
             $findings    = if ($raw.PSObject.Properties.Match('Findings')) { $raw.Findings } else { $raw['Findings'] }
             $remediation = if ($raw.PSObject.Properties.Match('Remediation')) { $raw.Remediation } else { $raw['Remediation'] }
             $references  = if ($raw.PSObject.Properties.Match('References')) { $raw.References } else { $raw['References'] }
         } else {
-            # Unknown type — convert to string
             $statusText = ($raw | Out-String).Trim()
         }
 
-        # Ensure Status is uppercase brief token where possible (preserve trailing message)
         if ($statusText) {
             $statusText = ($statusText -as [string]).Trim()
         } else {
@@ -150,8 +152,8 @@ function Start-CISM365Audit {
             Status      = $statusText
             Findings    = $findings
             Remediation = $remediation
-Notes       = $ctrl.Notes            
-RawResult   = $raw
+            Notes       = $ctrl.Notes
+            RawResult   = $raw
         }
     }
 
