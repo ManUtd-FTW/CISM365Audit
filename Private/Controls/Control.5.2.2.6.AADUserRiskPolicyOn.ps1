@@ -7,7 +7,7 @@ function Get-CISM365Control_5_2_2_6 {
         Name = 'Ensure Azure AD Identity Protection user risk policy is enabled'
         Profile = 'L1'
         Automated = $true
-        Services = @('AzureAD')
+        Services = @('Graph')
         Description = @'
 Ensure that the Azure AD Identity Protection user risk policy is enabled to automatically respond to risky sign-ins and compromised accounts.
 '@
@@ -20,23 +20,26 @@ User risk policies help detect and respond to compromised identities by enforcin
         )
         Audit = {
             try {
-                $policy = Get-AzureADMSConditionalAccessPolicy | Where-Object {
+                $policies = Get-MgIdentityConditionalAccessPolicy -All
+                $userRiskPolicies = $policies | Where-Object {
                     $_.Conditions.Users.Include -contains "All" -and
                     $_.Conditions.SignInRiskLevels -eq $null -and
                     $_.Conditions.UserRiskLevels -ne $null
                 }
 
-                if (-not $policy) {
+                if (-not $userRiskPolicies) {
                     "FAIL (No user risk policy found)"
                     return
                 }
 
-                $enabled = $policy.State -eq "enabled"
+                # If more than one, report the first enabled one
+                $enabledPolicy = $userRiskPolicies | Where-Object { $_.State -eq "enabled" } | Select-Object -First 1
 
-                if ($enabled) {
-                    "PASS (User risk policy is enabled: $($policy.DisplayName))"
+                if ($enabledPolicy) {
+                    "PASS (User risk policy is enabled: $($enabledPolicy.DisplayName))"
                 } else {
-                    "FAIL (User risk policy exists but is not enabled: $($policy.DisplayName))"
+                    $disabled = $userRiskPolicies | Select-Object -First 1
+                    "FAIL (User risk policy exists but is not enabled: $($disabled.DisplayName))"
                 }
             }
             catch {
