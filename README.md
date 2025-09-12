@@ -1,8 +1,8 @@
 # CISM365Audit
 
-Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of the **CIS Microsoft 365 Foundations Benchmark (v5.0.0.3)** and produce a HTML report.
+Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of the **Microsoft/CIS/NIST Security Best Practices** and produce a HTML report.
 
-> **Status:** v0.0.7 (latest)
+> **Status:** v0.0.8 (latest)
 
 ---
 
@@ -13,7 +13,7 @@ Minimal PowerShell module to audit a Microsoft 365 tenant against a subset of th
 - **Updated report layout** for improved readability and summary.
 - Minimal HTML report with PASS / FAIL / MANUAL / ERROR states.
 
-## ✅ Controls Implemented (v0.0.7)
+## ✅ Controls Implemented (v0.0.8)
 - New controls added:
   - **2.x, 3.x. 4.x, 5.x, 6.x, 7.x, 8.x, 9.x
 
