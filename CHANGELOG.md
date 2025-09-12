@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.0.8] - 2025-09-12
+### Added
+- New controls under `Private/Controls/`:
+  - More controls in each section
+
+### Updated
+- Implemented PowerShell Graph SDK
+
 ## [0.0.7] - 2025-09-11
 ### Added
 - New controls under `Private/Controls/`:
